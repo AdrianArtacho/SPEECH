@@ -4,7 +4,7 @@ A minimal full-screen friendly [“text card” viewer](https://adrianartacho.gi
 
 ---
 
-## Helper
+## 🛟Helper
 
 You may use the [helper page](https://adrianartacho.github.io/SPEECH/helper.html) to produce a viable link from a google spreadsheet public csv URL.
 
