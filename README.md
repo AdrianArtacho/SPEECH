@@ -11,7 +11,7 @@ Open your GitHub Pages URL like:
 
 Example (Google Sheets published CSV):
 
-`?csv=https%3A%2F%2Fdocs.google.com%2Fspreadsheets%2Fd%2Fe%2F2PACX-1vTZgGV7UM0gkQz7GdeIGV_Gq3uzTpUnW3dbWXew4S_X2Ls3ngc8oB3pvrywhIHm3ge6oRRlHHmbnZwP%2Fpub%3Fgid%3D0%26single%3Dtrue%26output%3Dcsv&title=Musikproduktion`
+`?csv=https%3A%2F%2Fdocs.google.com%2Fspreadsheets%2Fd%2Fe%2F2PACX-1vTZgGV7UM0gkQz7GdeIGV_Gq3uzTpUnW3dbWXew4S_X2Ls3ngc8oB3pvrywhIHm3ge6oRRlHHmbnZwP%2Fpub%3Fgid%3D0%26single%3Dtrue%26output%3Dcsv&title=Example`
 
 ## CSV format
 
