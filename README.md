@@ -35,3 +35,7 @@ When you reach the last card, it wraps to the first automatically.
 
 1. Put `index.html` at the repo root
 2. Settings → Pages → Deploy from branch → `main` / root
+
+---
+
+## [📝To-Do](https://trello.com/c/Q3djWAzQ/282-speech)
