@@ -2,6 +2,14 @@
 
 A minimal full-screen friendly [“text card” viewer](https://adrianartacho.github.io/SPEECH/) that loads its content from a CSV URL.
 
+---
+
+## Helper
+
+You may use the [helper page](https://adrianartacho.github.io/SPEECH/helper.html) to produce a viable link from a google spreadsheet public csv URL.
+
+---
+
 ## Usage
 
 Open your GitHub Pages URL like:
