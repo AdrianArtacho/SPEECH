@@ -6,7 +6,7 @@ A minimal full-screen friendly “text card” viewer that loads its content fro
 
 Open your GitHub Pages URL like:
 
-- `...?csv=<ENCODED_CSV_URL>`
+- `...?csv=`[<ENCODED_CSV_URL>](https://adrianartacho.github.io/UrlEncode/)
 - Optional: `&title=Musikproduktion`
 
 Example (Google Sheets published CSV):
