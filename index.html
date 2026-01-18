@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Text Cards</title>
+
+  <!-- Markdown renderer + sanitizer -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+
+  <!-- CSV parser -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#000;
+      --fg:#fff;
+      --muted: rgba(255,255,255,0.7);
+      --muted2: rgba(255,255,255,0.55);
+      --pad: clamp(16px, 4vw, 48px);
+      --radius: 14px;
+      --btnbg: rgba(255,255,255,0.10);
+      --btnbd: rgba(255,255,255,0.18);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    /* Prevent “word breaking” */
+    body {
+      word-break: normal;
+      overflow-wrap: normal;
+      hyphens: manual;
+    }
+
+    .app {
+      min-height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      padding: var(--pad);
+      box-sizing: border-box;
+      gap: 14px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      user-select: none;
+    }
+
+    .counter {
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+      padding: 6px 10px;
+      border: 1px solid var(--btnbd);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+    }
+
+    .card {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      box-sizing: border-box;
+      border-radius: var(--radius);
+      padding: clamp(14px, 3.5vw, 42px);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      position: relative;
+      touch-action: pan-y; /* allow vertical scroll but we’ll handle horizontal swipes */
+      overflow: hidden;
+    }
+
+    /* The text area */
+    .content {
+      width: min(1100px, 100%);
+      font-size: clamp(28px, 4.6vw, 78px);
+      line-height: 1.12;
+      letter-spacing: -0.01em;
+      text-align: left;
+
+      /* key settings: do NOT break words */
+      word-break: normal;
+      overflow-wrap: normal;
+      hyphens: manual;
+
+      /* keep user newlines */
+      white-space: pre-wrap;
+    }
+
+    /* Markdown styling */
+    .content h1, .content h2, .content h3 { margin: 0.2em 0 0.4em 0; }
+    .content p { margin: 0.35em 0; }
+    .content ul, .content ol { margin: 0.35em 0 0.35em 1.2em; }
+    .content li { margin: 0.15em 0; }
+    .content code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 0.9em;
+      background: rgba(255,255,255,0.10);
+      padding: 0.12em 0.35em;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .content blockquote{
+      margin: 0.5em 0;
+      padding-left: 0.7em;
+      border-left: 3px solid rgba(255,255,255,0.25);
+      color: var(--muted);
+    }
+    .content a { color: #fff; text-decoration: underline; text-underline-offset: 0.12em; }
+
+    .bottombar{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      user-select: none;
+    }
+
+    .footer {
+      font-size: 13px;
+      color: var(--muted2);
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 70%;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--btnbd);
+      background: var(--btnbg);
+      color: var(--fg);
+      padding: 10px 12px;
+      border-radius: 999px;
+      font-size: 14px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    button:active { transform: translateY(1px); }
+
+    .hint {
+      color: var(--muted2);
+      font-size: 13px;
+      margin-top: 6px;
+    }
+
+    .error {
+      color: #fff;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius);
+      padding: 14px;
+      font-size: 16px;
+      line-height: 1.35;
+    }
+
+    @media (max-width: 600px){
+      .content { text-align: left; }
+      .footer { max-width: 62%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="counter" id="counter">–/–</div>
+    </div>
+
+    <div class="card" id="card">
+      <div class="content" id="content"></div>
+    </div>
+
+    <div class="bottombar">
+      <div class="footer" id="footer"></div>
+      <div class="controls">
+        <button id="prevBtn" title="Previous (←)">◀</button>
+        <button id="nextBtn" title="Next (→)">▶</button>
+        <button id="fsBtn" title="Fullscreen">⛶</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---------- Helpers ----------
+    function getParam(name) {
+      const url = new URL(window.location.href);
+      return url.searchParams.get(name);
+    }
+
+    function decodePossiblyEncodedUrl(s) {
+      // user will likely pass encodeURIComponent(url)
+      try { return decodeURIComponent(s); } catch { return s; }
+    }
+
+    function safeMarkdownToHtml(mdText) {
+      const raw = marked.parse(mdText ?? "");
+      return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+    }
+
+    function normalizeRowsToCards(parsed) {
+      // Take first cell (column A) of each row; ignore empty rows
+      const cards = [];
+      for (const row of parsed.data || []) {
+        if (!row) continue;
+        const first = Array.isArray(row) ? row[0] : null;
+        const text = (first ?? "").toString().trim();
+        if (text.length > 0) cards.push(text);
+      }
+      return cards;
+    }
+
+    // ---------- State ----------
+    let cards = [];
+    let idx = 0;
+
+    const elContent = document.getElementById("content");
+    const elCounter = document.getElementById("counter");
+    const elFooter  = document.getElementById("footer");
+    const elCard    = document.getElementById("card");
+
+    function render() {
+      if (!cards.length) return;
+
+      const total = cards.length;
+      const displayIndex = ((idx % total) + total) % total; // safe modulo
+      idx = displayIndex;
+
+      const md = cards[displayIndex];
+      elContent.innerHTML = safeMarkdownToHtml(md);
+
+      elCounter.textContent = `${displayIndex + 1}/${total}`;
+
+      const title = (getParam("title") || "").trim();
+      if (title) elFooter.textContent = `${title} ${displayIndex + 1}/${total}`;
+      else elFooter.textContent = `${displayIndex + 1}/${total}`;
+    }
+
+    function next() {
+      if (!cards.length) return;
+      idx = (idx + 1) % cards.length;
+      render();
+    }
+
+    function prev() {
+      if (!cards.length) return;
+      idx = (idx - 1 + cards.length) % cards.length;
+      render();
+    }
+
+    // ---------- Fullscreen ----------
+    async function toggleFullscreen() {
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+        } else {
+          await document.exitFullscreen();
+        }
+      } catch (e) {
+        // ignore (some browsers block it)
+      }
+    }
+
+    // ---------- Swipe ----------
+    let touchStartX = null;
+    let touchStartY = null;
+
+    elCard.addEventListener("touchstart", (e) => {
+      if (!e.touches || e.touches.length !== 1) return;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    elCard.addEventListener("touchend", (e) => {
+      if (touchStartX === null || touchStartY === null) return;
+      const t = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+      if (!t) return;
+
+      const dx = t.clientX - touchStartX;
+      const dy = t.clientY - touchStartY;
+
+      touchStartX = null;
+      touchStartY = null;
+
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+
+      // horizontal swipe threshold
+      if (absX > 45 && absX > absY * 1.2) {
+        if (dx < 0) next();
+        else prev();
+      }
+    }, { passive: true });
+
+    // ---------- Controls ----------
+    document.getElementById("nextBtn").addEventListener("click", next);
+    document.getElementById("prevBtn").addEventListener("click", prev);
+    document.getElementById("fsBtn").addEventListener("click", toggleFullscreen);
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") next();
+      if (e.key === "ArrowLeft"  || e.key === "PageUp") prev();
+      if (e.key.toLowerCase() === "f") toggleFullscreen();
+    });
+
+    // Tap anywhere on card to go next (nice on phones)
+    elCard.addEventListener("click", (e) => {
+      // don’t hijack clicks on links
+      const a = e.target.closest && e.target.closest("a");
+      if (a) return;
+      next();
+    });
+
+    // ---------- Load CSV ----------
+    (async function init() {
+      const csvParam = getParam("csv");
+      if (!csvParam) {
+        elContent.innerHTML = `
+          <div class="error">
+            <b>No CSV provided.</b><br><br>
+            Use the URL parameter <code>?csv=...</code> where the value is an encoded CSV URL.<br><br>
+            Example:<br>
+            <code>?csv=${encodeURIComponent("https://docs.google.com/spreadsheets/d/e/2PACX-1vTZgGV7UM0gkQz7GdeIGV_Gq3uzTpUnW3dbWXew4S_X2Ls3ngc8oB3pvrywhIHm3ge6oRRlHHmbnZwP/pub?gid=0&single=true&output=csv")}</code><br><br>
+            Optional: <code>&title=Musikproduktion</code>
+            <div class="hint">Swipe left/right, or use ◀ ▶, or arrow keys. Tap to advance.</div>
+          </div>
+        `;
+        elCounter.textContent = "–/–";
+        elFooter.textContent = "";
+        return;
+      }
+
+      const csvUrl = decodePossiblyEncodedUrl(csvParam);
+
+      try {
+        const res = await fetch(csvUrl, { cache: "no-store" });
+        if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
+        const text = await res.text();
+
+        const parsed = Papa.parse(text, {
+          skipEmptyLines: true
+        });
+
+        cards = normalizeRowsToCards(parsed);
+
+        if (!cards.length) {
+          throw new Error("No usable rows found (column A empty?).");
+        }
+
+        // Optional: start index ?i=2 (1-based)
+        const start = parseInt(getParam("i") || "1", 10);
+        if (!Number.isNaN(start) && start >= 1 && start <= cards.length) {
+          idx = start - 1;
+        }
+
+        render();
+      } catch (err) {
+        elContent.innerHTML = `
+          <div class="error">
+            <b>Could not load CSV.</b><br><br>
+            ${DOMPurify.sanitize(String(err))}<br><br>
+            Check that your CSV URL is public and supports CORS (Google Sheets published CSV usually works).
+          </div>
+        `;
+        elCounter.textContent = "–/–";
+        elFooter.textContent = "";
+      }
+    })();
+  </script>
+</body>
+</html>
