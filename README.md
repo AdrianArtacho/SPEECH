@@ -1,6 +1,6 @@
 # SPEECH (Text Cards)
 
-A minimal full-screen friendly “text card” viewer that loads its content from a CSV URL.
+A minimal full-screen friendly [“text card” viewer](https://adrianartacho.github.io/SPEECH/) that loads its content from a CSV URL.
 
 ## Usage
 
