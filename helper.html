@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SPEECH Helper</title>
+  <style>
+    :root{
+      --bg:#000;
+      --fg:#fff;
+      --muted: rgba(255,255,255,0.7);
+      --muted2: rgba(255,255,255,0.55);
+      --pad: clamp(16px, 4vw, 42px);
+      --radius: 14px;
+      --btnbg: rgba(255,255,255,0.10);
+      --btnbd: rgba(255,255,255,0.18);
+      --field: rgba(255,255,255,0.06);
+      --fieldbd: rgba(255,255,255,0.14);
+    }
+
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    .wrap{
+      min-height: 100%;
+      box-sizing: border-box;
+      padding: var(--pad);
+      display: grid;
+      gap: 14px;
+      align-content: start;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    h1{ margin: 0; font-size: clamp(22px, 3vw, 30px); letter-spacing: -0.01em; }
+    .sub{ color: var(--muted); margin: 0 0 10px 0; line-height: 1.35; }
+
+    .card{
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    label{ font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+    input, textarea{
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--field);
+      border: 1px solid var(--fieldbd);
+      border-radius: 12px;
+      color: var(--fg);
+      padding: 12px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    textarea{ min-height: 90px; resize: vertical; }
+
+    .row{ display: grid; gap: 12px; grid-template-columns: 1fr; }
+    @media(min-width: 720px){
+      .row{ grid-template-columns: 2fr 1fr; }
+    }
+
+    .btns{ display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    button{
+      appearance: none;
+      border: 1px solid var(--btnbd);
+      background: var(--btnbg);
+      color: var(--fg);
+      padding: 10px 12px;
+      border-radius: 999px;
+      font-size: 14px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    button:active{ transform: translateY(1px); }
+
+    .hint{ font-size: 13px; color: var(--muted2); line-height: 1.35; }
+    .toast{
+      font-size: 13px;
+      color: var(--muted);
+      min-height: 1.2em;
+    }
+    code{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      background: rgba(255,255,255,0.10);
+      padding: 0.12em 0.35em;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <h1>SPEECH URL Helper</h1>
+      <p class="sub">
+        Paste a <b>published CSV</b> Google Sheets URL, optionally add a title, and this will generate a shareable link to your cards viewer.
+      </p>
+    </div>
+
+    <div class="card">
+      <div>
+        <label for="csvUrl">Google Sheets public CSV URL</label>
+        <input id="csvUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?gid=0&single=true&output=csv" />
+        <div class="hint">Tip: In Google Sheets → File → Share/Publish → publish to web → CSV.</div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="title">Title (optional)</label>
+          <input id="title" type="text" placeholder="Musikproduktion" />
+        </div>
+        <div>
+          <label for="start">Start card (optional)</label>
+          <input id="start" type="number" min="1" step="1" placeholder="1" />
+        </div>
+      </div>
+
+      <div>
+        <label for="result">Generated URL</label>
+        <textarea id="result" readonly></textarea>
+        <div class="hint">
+          This encodes the CSV URL for <code>?csv=...</code> and adds <code>&title=...</code> when provided.
+        </div>
+      </div>
+
+      <div class="btns">
+        <button id="copyBtn">Copy</button>
+        <button id="shareBtn">Share…</button>
+        <button id="openBtn">Open</button>
+        <button id="clearBtn">Clear</button>
+        <span class="toast" id="toast"></span>
+      </div>
+
+      <div class="hint" id="supportHint"></div>
+    </div>
+  </div>
+
+  <script>
+    const csvEl = document.getElementById("csvUrl");
+    const titleEl = document.getElementById("title");
+    const startEl = document.getElementById("start");
+    const resultEl = document.getElementById("result");
+    const toastEl = document.getElementById("toast");
+    const supportHintEl = document.getElementById("supportHint");
+
+    // Your viewer is index.html in the same folder
+    // This resolves correctly on GitHub Pages: .../SPEECH/ + index.html
+    function viewerBaseUrl(){
+      const u = new URL(window.location.href);
+      // helper.html is in the same directory as index.html
+      u.pathname = u.pathname.replace(/helper\.html$/i, "index.html");
+      u.search = "";
+      u.hash = "";
+      return u.toString();
+    }
+
+    function buildUrl() {
+      const csvUrl = (csvEl.value || "").trim();
+      const title = (titleEl.value || "").trim();
+      const start = (startEl.value || "").trim();
+
+      if (!csvUrl) {
+        resultEl.value = "";
+        return;
+      }
+
+      const base = new URL(viewerBaseUrl());
+      base.searchParams.set("csv", encodeURIComponent(csvUrl));
+
+      if (title) base.searchParams.set("title", title);
+      if (start) {
+        const n = parseInt(start, 10);
+        if (!Number.isNaN(n) && n >= 1) base.searchParams.set("i", String(n));
+      }
+
+      resultEl.value = base.toString();
+    }
+
+    function toast(msg) {
+      toastEl.textContent = msg;
+      window.clearTimeout(toast._t);
+      toast._t = window.setTimeout(() => toastEl.textContent = "", 2200);
+    }
+
+    async function copyToClipboard(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast("Copied!");
+        return true;
+      } catch {
+        // Fallback
+        try {
+          resultEl.focus();
+          resultEl.select();
+          document.execCommand("copy");
+          toast("Copied!");
+          return true;
+        } catch {
+          toast("Copy failed (select and copy manually).");
+          return false;
+        }
+      }
+    }
+
+    async function share(text) {
+      // Web Share API (works on most mobile browsers)
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: "SPEECH link",
+            text: "SPEECH cards link:",
+            url: text
+          });
+          toast("Shared!");
+          return;
+        } catch {
+          // user cancelled or share failed; do nothing noisy
+        }
+      }
+      // fallback: copy
+      await copyToClipboard(text);
+    }
+
+    // Live update
+    ["input", "change"].forEach(evt => {
+      csvEl.addEventListener(evt, buildUrl);
+      titleEl.addEventListener(evt, buildUrl);
+      startEl.addEventListener(evt, buildUrl);
+    });
+
+    // Buttons
+    document.getElementById("copyBtn").addEventListener("click", async () => {
+      if (!resultEl.value) return toast("Nothing to copy yet.");
+      await copyToClipboard(resultEl.value);
+    });
+
+    document.getElementById("shareBtn").addEventListener("click", async () => {
+      if (!resultEl.value) return toast("Nothing to share yet.");
+      await share(resultEl.value);
+    });
+
+    document.getElementById("openBtn").addEventListener("click", () => {
+      if (!resultEl.value) return toast("Nothing to open yet.");
+      window.open(resultEl.value, "_blank", "noopener,noreferrer");
+    });
+
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      csvEl.value = "";
+      titleEl.value = "";
+      startEl.value = "";
+      resultEl.value = "";
+      toast("Cleared.");
+    });
+
+    // Support hint
+    if (!navigator.share) {
+      supportHintEl.textContent = "Note: Your browser doesn’t support native sharing here — the Share button will copy the link instead.";
+    } else {
+      supportHintEl.textContent = "Share uses your device’s native share sheet (WhatsApp, Keep, Mail, etc.).";
+    }
+
+    // Pre-fill from query params if you want:
+    // helper.html?csv=<raw url>&title=...
+    (function prefill(){
+      const u = new URL(window.location.href);
+      const rawCsv = u.searchParams.get("csv");
+      const t = u.searchParams.get("title");
+      const i = u.searchParams.get("i");
+      if (rawCsv) csvEl.value = rawCsv;
+      if (t) titleEl.value = t;
+      if (i) startEl.value = i;
+      buildUrl();
+    })();
+  </script>
+</body>
+</html>
