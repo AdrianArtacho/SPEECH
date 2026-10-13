@@ -12,6 +12,9 @@
   <!-- CSV parser -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
+  <!-- Embedded speech links -->
+  <script src="./speech-data.js"></script>
+
   <style>
     :root{
       --bg:#000;
@@ -65,6 +68,8 @@
       border-radius: 999px;
       background: rgba(255,255,255,0.06);
     }
+
+    .edit-link { color: var(--muted); font-size: 14px; text-underline-offset: 3px; }
 
     .card {
       display: flex;
@@ -182,6 +187,7 @@
 <body>
   <div class="app">
     <div class="topbar">
+      <a id="editLink" class="edit-link" href="./helper.html" hidden>Edit</a>
       <div class="counter" id="counter">–/–</div>
     </div>
 
@@ -207,8 +213,12 @@
     }
 
     function decodePossiblyEncodedUrl(s) {
-      // user will likely pass encodeURIComponent(url)
-      try { return decodeURIComponent(s); } catch { return s; }
+      // Older helper links encoded the whole URL twice. Keep escapes within
+      // correctly encoded URLs intact (URLSearchParams already decodes once).
+      if (/^https?%3a/i.test(s)) {
+        try { return decodeURIComponent(s); } catch { return s; }
+      }
+      return s;
     }
 
     function safeMarkdownToHtml(mdText) {
@@ -329,17 +339,19 @@
       next();
     });
 
-    // ---------- Load CSV ----------
+    // ---------- Load embedded speech or CSV ----------
     (async function init() {
+      const speechParam = getParam("speech");
       const csvParam = getParam("csv");
-      if (!csvParam) {
+      const hasSpeech = speechParam !== null;
+      if (!hasSpeech && !csvParam) {
         elContent.innerHTML = `
           <div class="error">
-            <b>No CSV provided.</b><br><br>
-            Use the URL parameter <code>?csv=...</code> where the value is an encoded CSV URL.<br><br>
-            Example:<br>
-            <code>?csv=${encodeURIComponent("https://docs.google.com/spreadsheets/d/e/2PACX-1vTZgGV7UM0gkQz7GdeIGV_Gq3uzTpUnW3dbWXew4S_X2Ls3ngc8oB3pvrywhIHm3ge6oRRlHHmbnZwP/pub?gid=0&single=true&output=csv")}</code><br><br>
-            Optional: <code>&title=Musikproduktion</code>
+            <b>No cards provided.</b><br><br>
+            <a href="./helper.html">Create a speech link with the helper</a> by entering your cards directly or using a published CSV URL.<br><br>
+            <code>?speech=...</code> carries the cards in the link itself; no spreadsheet is needed.<br><br>
+            <code>?csv=...</code> loads the cards from an encoded public CSV URL.<br><br>
+            Optional: <code>&title=Musikproduktion</code> and <code>&i=2</code> to start on card 2.
             <div class="hint">Swipe left/right, or use ◀ ▶, or arrow keys. Tap to advance.</div>
           </div>
         `;
@@ -348,21 +360,22 @@
         return;
       }
 
-      const csvUrl = decodePossiblyEncodedUrl(csvParam);
-
       try {
-        const res = await fetch(csvUrl, { cache: "no-store" });
-        if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
-        const text = await res.text();
+        // A present speech parameter takes precedence, even if malformed.
+        // Never silently fetch a different speech from CSV after a bad link.
+        if (hasSpeech) {
+          cards = SpeechData.decode(speechParam);
+        } else {
+          const csvUrl = decodePossiblyEncodedUrl(csvParam);
+          const res = await fetch(csvUrl, { cache: "no-store" });
+          if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
+          const text = await res.text();
 
-        const parsed = Papa.parse(text, {
-          skipEmptyLines: true
-        });
-
-        cards = normalizeRowsToCards(parsed);
-
-        if (!cards.length) {
-          throw new Error("No usable rows found (column A empty?).");
+          const parsed = Papa.parse(text, { skipEmptyLines: true });
+          cards = normalizeRowsToCards(parsed);
+          if (!cards.length) {
+            throw new Error("No usable rows found (column A empty?).");
+          }
         }
 
         // Optional: start index ?i=2 (1-based)
@@ -372,14 +385,30 @@
         }
 
         render();
+        if (hasSpeech) {
+          const helperUrl = new URL("./helper.html", window.location.href);
+          helperUrl.search = window.location.search;
+          helperUrl.searchParams.delete("csv");
+          const editLink = document.getElementById("editLink");
+          editLink.href = helperUrl.toString();
+          editLink.hidden = false;
+        }
       } catch (err) {
-        elContent.innerHTML = `
-          <div class="error">
-            <b>Could not load CSV.</b><br><br>
-            ${DOMPurify.sanitize(String(err))}<br><br>
-            Check that your CSV URL is public and supports CORS (Google Sheets published CSV usually works).
-          </div>
-        `;
+        const error = document.createElement("div");
+        error.className = "error";
+        const heading = document.createElement("b");
+        heading.textContent = hasSpeech ? "Could not load speech." : "Could not load CSV.";
+        const detail = document.createElement("p");
+        detail.textContent = err.message || String(err);
+        const hint = document.createElement("p");
+        hint.textContent = hasSpeech
+          ? "Check that the entire speech link was copied."
+          : "Check that your CSV URL is public and supports CORS (Google Sheets published CSV usually works).";
+        const helper = document.createElement("a");
+        helper.href = "./helper.html";
+        helper.textContent = "Create a link with the helper";
+        error.append(heading, detail, hint, helper);
+        elContent.replaceChildren(error);
         elCounter.textContent = "–/–";
         elFooter.textContent = "";
       }

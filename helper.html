@@ -44,10 +44,12 @@
       display: grid;
       gap: 12px;
     }
+    .wrap > *, .card > *, .row > *{ min-width: 0; }
 
     label{ font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
-    input, textarea{
+    input, textarea, select{
       width: 100%;
+      min-width: 0;
       box-sizing: border-box;
       background: var(--field);
       border: 1px solid var(--fieldbd);
@@ -57,7 +59,21 @@
       font-size: 14px;
       outline: none;
     }
+    select option{ background: #111; color: var(--fg); }
+    input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible{
+      outline: 2px solid var(--fg);
+      outline-offset: 3px;
+    }
     textarea{ min-height: 90px; resize: vertical; }
+    [hidden]{ display: none !important; }
+    .cards{ display: grid; gap: 16px; }
+    .card-heading{ display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .card-heading label{ margin: 0; }
+    .remove-card{ font-size: 12px; padding: 8px 10px; }
+    .speech-input{ min-height: 120px; font-family: inherit; line-height: 1.5; }
+    .source-panel{ display: grid; gap: 12px; }
+    .message{ font-size: 13px; line-height: 1.4; margin: 0; }
+    .warning{ padding: 10px 12px; border: 1px solid var(--btnbd); border-radius: 10px; }
 
     .row{ display: grid; gap: 12px; grid-template-columns: 1fr; }
     @media(min-width: 720px){
@@ -98,15 +114,32 @@
     <div>
       <h1>SPEECH URL Helper</h1>
       <p class="sub">
-        Paste a <b>published CSV</b> Google Sheets URL, optionally add a title, and this will generate a shareable link to your cards viewer.
+        Write your cards directly into a shareable link, or connect a published spreadsheet.
       </p>
     </div>
 
     <div class="card">
       <div>
-        <label for="csvUrl">Google Sheets public CSV URL</label>
-        <input id="csvUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?gid=0&single=true&output=csv" />
-        <div class="hint">Tip: In Google Sheets → File → Share/Publish → publish to web → CSV.</div>
+        <label for="sourceMode">Card source</label>
+        <select id="sourceMode">
+          <option value="speech">Text in the link</option>
+          <option value="csv">Published CSV / Google Sheets</option>
+        </select>
+      </div>
+
+      <div id="speechPanel" class="source-panel">
+        <div class="hint">Use one text box per card. Markdown, line breaks, and special characters are supported.</div>
+        <div id="cards" class="cards"></div>
+        <div class="btns"><button id="addCardBtn" type="button">Add card</button></div>
+        <div class="hint">Anyone with the link can read the cards. Editing the text creates a new link; links you have already shared keep their original text.</div>
+      </div>
+
+      <div id="csvPanel" class="source-panel" hidden>
+        <div>
+          <label for="csvUrl">Published CSV URL</label>
+          <input id="csvUrl" type="url" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?gid=0&single=true&output=csv" />
+        </div>
+        <div class="hint">In Google Sheets → File → Share → Publish to web → CSV. Cards come from the first column.</div>
       </div>
 
       <div class="row">
@@ -122,31 +155,41 @@
 
       <div>
         <label for="result">Generated URL</label>
-        <textarea id="result" readonly></textarea>
-        <div class="hint">
-          This encodes the CSV URL for <code>?csv=...</code> and adds <code>&title=...</code> when provided.
-        </div>
+        <textarea id="result" readonly spellcheck="false"></textarea>
+        <div class="hint" id="linkStatus" aria-live="polite"></div>
       </div>
+      <p class="message" id="validationMessage" role="status" hidden></p>
+      <p class="message warning" id="lengthWarning" hidden>This link is long and may be shortened or rejected by some apps. For a longer speech, consider using a published CSV instead.</p>
 
       <div class="btns">
         <button id="copyBtn">Copy</button>
         <button id="shareBtn">Share…</button>
         <button id="openBtn">Open</button>
         <button id="clearBtn">Clear</button>
-        <span class="toast" id="toast"></span>
+        <span class="toast" id="toast" role="status"></span>
       </div>
 
       <div class="hint" id="supportHint"></div>
     </div>
   </div>
 
+  <script src="./speech-data.js"></script>
   <script>
+    const modeEl = document.getElementById("sourceMode");
+    const speechPanelEl = document.getElementById("speechPanel");
+    const csvPanelEl = document.getElementById("csvPanel");
+    const cardsEl = document.getElementById("cards");
     const csvEl = document.getElementById("csvUrl");
     const titleEl = document.getElementById("title");
     const startEl = document.getElementById("start");
     const resultEl = document.getElementById("result");
     const toastEl = document.getElementById("toast");
     const supportHintEl = document.getElementById("supportHint");
+    const statusEl = document.getElementById("linkStatus");
+    const validationEl = document.getElementById("validationMessage");
+    const lengthWarningEl = document.getElementById("lengthWarning");
+    let prefillError = "";
+    let nextCardId = 0;
 
     // Your viewer is index.html in the same folder
     // This resolves correctly on GitHub Pages: .../SPEECH/ + index.html
@@ -159,26 +202,106 @@
       return u.toString();
     }
 
+    function updateCardLabels() {
+      Array.from(cardsEl.children).forEach((card, index) => {
+        card.querySelector("label").textContent = `Card ${index + 1}`;
+        card.querySelector("button").setAttribute("aria-label", `Remove card ${index + 1}`);
+      });
+    }
+
+    function addCard(value = "") {
+      const card = document.createElement("div");
+      const heading = document.createElement("div");
+      heading.className = "card-heading";
+      const label = document.createElement("label");
+      const textarea = document.createElement("textarea");
+      textarea.id = `speech-card-${++nextCardId}`;
+      textarea.className = "speech-input";
+      textarea.placeholder = "Write a card…";
+      textarea.value = value;
+      label.htmlFor = textarea.id;
+      textarea.addEventListener("input", () => {
+        prefillError = "";
+        buildUrl();
+      });
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "remove-card";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => {
+        const focusTarget = card.nextElementSibling || card.previousElementSibling;
+        card.remove();
+        if (!cardsEl.children.length) addCard();
+        prefillError = "";
+        updateCardLabels();
+        buildUrl();
+        (focusTarget || cardsEl.firstElementChild).querySelector("textarea").focus();
+      });
+      heading.append(label, remove);
+      card.append(heading, textarea);
+      cardsEl.append(card);
+      updateCardLabels();
+      return textarea;
+    }
+
+    function showMode() {
+      const direct = modeEl.value === "speech";
+      speechPanelEl.hidden = !direct;
+      csvPanelEl.hidden = direct;
+      buildUrl();
+    }
+
+    function validation(message) {
+      validationEl.textContent = message;
+      validationEl.hidden = !message;
+    }
+
     function buildUrl() {
-      const csvUrl = (csvEl.value || "").trim();
+      resultEl.value = "";
+      lengthWarningEl.hidden = true;
+      validation("");
+      const direct = modeEl.value === "speech";
+      const cards = Array.from(cardsEl.querySelectorAll("textarea"), el => el.value);
+      const filled = cards.filter(card => card.trim()).length;
+      statusEl.textContent = direct ? `${filled} ${filled === 1 ? "card" : "cards"} with text` : "";
       const title = (titleEl.value || "").trim();
       const start = (startEl.value || "").trim();
+      const base = new URL(viewerBaseUrl());
 
-      if (!csvUrl) {
-        resultEl.value = "";
-        return;
+      if (direct) {
+        if (prefillError) return validation(prefillError);
+        if (!filled) return validation("Write your first card to generate a link.");
+        const emptyIndex = cards.findIndex(card => !card.trim());
+        if (emptyIndex !== -1) return validation(`Write something in card ${emptyIndex + 1}, or remove it, to generate a link.`);
+        try {
+          base.searchParams.set("speech", SpeechData.encode(cards));
+        } catch (error) {
+          return validation(error.message || "The cards could not be encoded. Please check the text.");
+        }
+      } else {
+        const csvUrl = csvEl.value.trim();
+        if (!csvUrl) return validation("Paste a published CSV URL to generate a link.");
+        try {
+          const parsed = new URL(csvUrl);
+          if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
+        } catch {
+          return validation("Enter a complete CSV URL beginning with https:// or http://.");
+        }
+        // URLSearchParams performs the encoding; leave URL-internal escapes intact.
+        base.searchParams.set("csv", csvUrl);
       }
 
-      const base = new URL(viewerBaseUrl());
-      base.searchParams.set("csv", encodeURIComponent(csvUrl));
-
       if (title) base.searchParams.set("title", title);
+      if (startEl.validity.badInput) return validation("The start card must be a whole number of 1 or greater.");
       if (start) {
-        const n = parseInt(start, 10);
-        if (!Number.isNaN(n) && n >= 1) base.searchParams.set("i", String(n));
+        const n = Number(start);
+        if (!Number.isSafeInteger(n) || n < 1) return validation("The start card must be a whole number of 1 or greater.");
+        base.searchParams.set("i", String(n));
       }
 
       resultEl.value = base.toString();
+      statusEl.textContent = `${direct ? `${cards.length} ${cards.length === 1 ? "card" : "cards"} · ` : ""}${resultEl.value.length.toLocaleString()} URL characters`;
+      lengthWarningEl.hidden = resultEl.value.length <= 8000;
     }
 
     function toast(msg) {
@@ -197,7 +320,7 @@
         try {
           resultEl.focus();
           resultEl.select();
-          document.execCommand("copy");
+          if (!document.execCommand("copy")) throw new Error("Copy unavailable");
           toast("Copied!");
           return true;
         } catch {
@@ -218,8 +341,8 @@
           });
           toast("Shared!");
           return;
-        } catch {
-          // user cancelled or share failed; do nothing noisy
+        } catch (error) {
+          if (error.name === "AbortError") return;
         }
       }
       // fallback: copy
@@ -231,6 +354,12 @@
       csvEl.addEventListener(evt, buildUrl);
       titleEl.addEventListener(evt, buildUrl);
       startEl.addEventListener(evt, buildUrl);
+    });
+    modeEl.addEventListener("change", showMode);
+    document.getElementById("addCardBtn").addEventListener("click", () => {
+      prefillError = "";
+      addCard().focus();
+      buildUrl();
     });
 
     // Buttons
@@ -253,7 +382,12 @@
       csvEl.value = "";
       titleEl.value = "";
       startEl.value = "";
-      resultEl.value = "";
+      prefillError = "";
+      modeEl.value = "speech";
+      cardsEl.replaceChildren();
+      addCard();
+      showMode();
+      cardsEl.querySelector("textarea").focus();
       toast("Cleared.");
     });
 
@@ -264,17 +398,30 @@
       supportHintEl.textContent = "Share uses your device’s native share sheet (WhatsApp, Keep, Mail, etc.).";
     }
 
-    // Pre-fill from query params if you want:
-    // helper.html?csv=<raw url>&title=...
+    // Reopen a viewer link in the helper to edit its cards and options.
     (function prefill(){
       const u = new URL(window.location.href);
       const rawCsv = u.searchParams.get("csv");
       const t = u.searchParams.get("title");
       const i = u.searchParams.get("i");
-      if (rawCsv) csvEl.value = rawCsv;
       if (t) titleEl.value = t;
       if (i) startEl.value = i;
-      buildUrl();
+      if (u.searchParams.has("speech")) {
+        try {
+          SpeechData.decode(u.searchParams.get("speech")).forEach(addCard);
+        } catch (error) {
+          prefillError = `This speech link could not be loaded: ${error.message || "invalid card data"} Edit the cards below to create a new link.`;
+        }
+      } else if (rawCsv) {
+        modeEl.value = "csv";
+        csvEl.value = rawCsv;
+        // Earlier helper versions encoded the complete CSV URL twice.
+        if (/^https?%3a/i.test(rawCsv)) {
+          try { csvEl.value = decodeURIComponent(rawCsv); } catch { /* Leave malformed input visible for correction. */ }
+        }
+      }
+      if (!cardsEl.children.length) addCard();
+      showMode();
     })();
   </script>
 </body>
