@@ -66,11 +66,7 @@
     }
     textarea{ min-height: 90px; resize: vertical; }
     [hidden]{ display: none !important; }
-    .cards{ display: grid; gap: 16px; }
-    .card-heading{ display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
-    .card-heading label{ margin: 0; }
-    .remove-card{ font-size: 12px; padding: 8px 10px; }
-    .speech-input{ min-height: 120px; font-family: inherit; line-height: 1.5; }
+    .speech-input{ min-height: 240px; font-family: inherit; line-height: 1.5; }
     .source-panel{ display: grid; gap: 12px; }
     .message{ font-size: 13px; line-height: 1.4; margin: 0; }
     .warning{ padding: 10px 12px; border: 1px solid var(--btnbd); border-radius: 10px; }
@@ -128,9 +124,11 @@
       </div>
 
       <div id="speechPanel" class="source-panel">
-        <div class="hint">Use one text box per card. Markdown, line breaks, and special characters are supported.</div>
-        <div id="cards" class="cards"></div>
-        <div class="btns"><button id="addCardBtn" type="button">Add card</button></div>
+        <div>
+          <label for="speechText">Speech text — one card per line</label>
+          <textarea id="speechText" class="speech-input" rows="10" placeholder="First card&#10;Second card&#10;Third card" aria-describedby="speechHint"></textarea>
+        </div>
+        <div class="hint" id="speechHint">Paste your whole speech here. Each Enter / line break starts a new card; blank lines are ignored. Text wrapping on screen does not create a new card. Markdown, accents, and emoji are supported.</div>
         <div class="hint">Anyone with the link can read the cards. Editing the text creates a new link; links you have already shared keep their original text.</div>
       </div>
 
@@ -178,7 +176,7 @@
     const modeEl = document.getElementById("sourceMode");
     const speechPanelEl = document.getElementById("speechPanel");
     const csvPanelEl = document.getElementById("csvPanel");
-    const cardsEl = document.getElementById("cards");
+    const speechEl = document.getElementById("speechText");
     const csvEl = document.getElementById("csvUrl");
     const titleEl = document.getElementById("title");
     const startEl = document.getElementById("start");
@@ -189,7 +187,6 @@
     const validationEl = document.getElementById("validationMessage");
     const lengthWarningEl = document.getElementById("lengthWarning");
     let prefillError = "";
-    let nextCardId = 0;
 
     // Your viewer is index.html in the same folder
     // This resolves correctly on GitHub Pages: .../SPEECH/ + index.html
@@ -200,48 +197,6 @@
       u.search = "";
       u.hash = "";
       return u.toString();
-    }
-
-    function updateCardLabels() {
-      Array.from(cardsEl.children).forEach((card, index) => {
-        card.querySelector("label").textContent = `Card ${index + 1}`;
-        card.querySelector("button").setAttribute("aria-label", `Remove card ${index + 1}`);
-      });
-    }
-
-    function addCard(value = "") {
-      const card = document.createElement("div");
-      const heading = document.createElement("div");
-      heading.className = "card-heading";
-      const label = document.createElement("label");
-      const textarea = document.createElement("textarea");
-      textarea.id = `speech-card-${++nextCardId}`;
-      textarea.className = "speech-input";
-      textarea.placeholder = "Write a card…";
-      textarea.value = value;
-      label.htmlFor = textarea.id;
-      textarea.addEventListener("input", () => {
-        prefillError = "";
-        buildUrl();
-      });
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "remove-card";
-      remove.textContent = "Remove";
-      remove.addEventListener("click", () => {
-        const focusTarget = card.nextElementSibling || card.previousElementSibling;
-        card.remove();
-        if (!cardsEl.children.length) addCard();
-        prefillError = "";
-        updateCardLabels();
-        buildUrl();
-        (focusTarget || cardsEl.firstElementChild).querySelector("textarea").focus();
-      });
-      heading.append(label, remove);
-      card.append(heading, textarea);
-      cardsEl.append(card);
-      updateCardLabels();
-      return textarea;
     }
 
     function showMode() {
@@ -261,18 +216,15 @@
       lengthWarningEl.hidden = true;
       validation("");
       const direct = modeEl.value === "speech";
-      const cards = Array.from(cardsEl.querySelectorAll("textarea"), el => el.value);
-      const filled = cards.filter(card => card.trim()).length;
-      statusEl.textContent = direct ? `${filled} ${filled === 1 ? "card" : "cards"} with text` : "";
+      const cards = speechEl.value.split(/\r\n|\r|\n/).filter(line => line.trim());
+      statusEl.textContent = direct ? `${cards.length} ${cards.length === 1 ? "card" : "cards"} with text` : "";
       const title = (titleEl.value || "").trim();
       const start = (startEl.value || "").trim();
       const base = new URL(viewerBaseUrl());
 
       if (direct) {
         if (prefillError) return validation(prefillError);
-        if (!filled) return validation("Write your first card to generate a link.");
-        const emptyIndex = cards.findIndex(card => !card.trim());
-        if (emptyIndex !== -1) return validation(`Write something in card ${emptyIndex + 1}, or remove it, to generate a link.`);
+        if (!cards.length) return validation("Write or paste your speech to generate a link.");
         try {
           base.searchParams.set("speech", SpeechData.encode(cards));
         } catch (error) {
@@ -356,9 +308,8 @@
       startEl.addEventListener(evt, buildUrl);
     });
     modeEl.addEventListener("change", showMode);
-    document.getElementById("addCardBtn").addEventListener("click", () => {
+    speechEl.addEventListener("input", () => {
       prefillError = "";
-      addCard().focus();
       buildUrl();
     });
 
@@ -384,10 +335,9 @@
       startEl.value = "";
       prefillError = "";
       modeEl.value = "speech";
-      cardsEl.replaceChildren();
-      addCard();
+      speechEl.value = "";
       showMode();
-      cardsEl.querySelector("textarea").focus();
+      speechEl.focus();
       toast("Cleared.");
     });
 
@@ -408,9 +358,9 @@
       if (i) startEl.value = i;
       if (u.searchParams.has("speech")) {
         try {
-          SpeechData.decode(u.searchParams.get("speech")).forEach(addCard);
+          speechEl.value = SpeechData.decode(u.searchParams.get("speech")).join("\n");
         } catch (error) {
-          prefillError = `This speech link could not be loaded: ${error.message || "invalid card data"} Edit the cards below to create a new link.`;
+          prefillError = `This speech link could not be loaded: ${error.message || "invalid card data"} Enter your speech above to create a new link.`;
         }
       } else if (rawCsv) {
         modeEl.value = "csv";
@@ -420,7 +370,6 @@
           try { csvEl.value = decodeURIComponent(rawCsv); } catch { /* Leave malformed input visible for correction. */ }
         }
       }
-      if (!cardsEl.children.length) addCard();
       showMode();
     })();
   </script>

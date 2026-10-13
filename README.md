@@ -8,10 +8,10 @@ A minimal full-screen friendly [“text card” viewer](https://adrianartacho.gi
 
 Use the [helper page](https://adrianartacho.github.io/SPEECH/helper.html) to create a shareable link:
 
-- **Direct text:** enter one card per text box and use **Add card** for the next one. Each card supports Markdown, multiple paragraphs, accents, and emoji. The generated link contains all the cards; no spreadsheet or separate data hosting is needed.
+- **Direct text:** type or paste the whole speech into one field, with one card per line. Press **Enter** to start the next card; empty or whitespace-only lines are ignored. Markdown, accents, and emoji are supported. The generated link contains all the cards; no spreadsheet or separate data hosting is needed.
 - **CSV URL:** paste a public CSV URL, such as a Google Sheets sheet published to the web as CSV.
 
-Both modes support an optional title and starting card, with **Copy**, **Share**, and **Open** buttons. To edit an existing speech link, use **Edit** in the viewer. The helper restores the cards and options.
+Both modes support an optional title and starting card, with **Copy**, **Share**, and **Open** buttons. To edit an existing speech link, use **Edit** in the viewer. The helper restores the text and options. Regenerating a link with multiline cards in the helper splits those cards into one card per non-empty line.
 
 Speech links contain a fixed snapshot: editing the cards creates a new link. Anyone with the link can read its contents. Very long links may be truncated by sharing apps or rejected by browsers/servers; the helper flags links over 8,000 characters. CSV remains useful for longer speeches and content you want to update without changing the link.
 
